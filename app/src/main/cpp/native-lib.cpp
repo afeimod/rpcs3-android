@@ -950,7 +950,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_net_rpcs3_RPCS3_usbDeviceEvent(
       handler->Init();
 
       std::vector<std::string> devices;
-      for (const auto &device : handler->list_devices()) {
+      for (const auto &device : handler->list_connected_devices()) {
         devices.push_back(device.name);
       }
 
@@ -986,7 +986,8 @@ extern "C" JNIEXPORT jboolean JNICALL Java_net_rpcs3_RPCS3_usbDeviceEvent(
       if (selectedHandler != pad_handler::null) {
         g_cfg_input.player1.device.from_string(
             handlerToDevices[selectedHandler].second.front());
-        handlerToDevices[selectedHandler].first->init_config(&g_cfg_input.player1.config);
+        handlerToDevices[selectedHandler].first->init_config(
+            &g_cfg_input.player1.config);
       } else {
         g_cfg_input.player1.device.from_default();
       }

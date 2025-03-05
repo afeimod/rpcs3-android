@@ -55,6 +55,8 @@ android {
     }
 }
 
+base.archivesName = "rpcs3"
+
 dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.ui.tooling.preview.android)
