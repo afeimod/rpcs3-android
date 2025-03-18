@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
@@ -84,8 +87,7 @@ fun AppNavHost() {
         ) {
             GamesDestination(
                 drawerState = drawerState,
-                navigateToSettings = { navController.navigate("settings") },
-                navigateToDrivers = { navController.navigate("drivers") }
+                navigateToSettings = { navController.navigate("settings") }
             )
         }
 
@@ -155,8 +157,7 @@ fun AppNavHost() {
 @Composable
 fun GamesDestination(
     drawerState: androidx.compose.material3.DrawerState,
-    navigateToSettings: () -> Unit,
-    navigateToDrivers: () -> Unit
+    navigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -248,13 +249,6 @@ fun GamesDestination(
                     )
 
                     NavigationDrawerItem(
-                        label = { Text("Custom GPU Drivers") },
-                        selected = false,
-                        icon = { Icon(Icons.Default.Settings, null) },
-                        onClick = navigateToDrivers
-                    )
-
-                    NavigationDrawerItem(
                         label = { Text("System Info") },
                         selected = false,
                         icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
@@ -267,6 +261,7 @@ fun GamesDestination(
         }
     ) {
         Scaffold(
+            modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
             topBar = {
                 CenterAlignedTopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
