@@ -10,6 +10,9 @@ on:
       shouldrelease:
           description: Create release
           type: boolean
+      uploadbuild:
+          description: Upload build
+          type: boolean
       releasetag:
         description: Enter the tag name
         type: string
@@ -31,22 +34,10 @@ jobs:
       contents: write
 
     steps:
-    - name: Maximize build space
-      uses: easimon/maximize-build-space@master
-      with:
-          root-reserve-mb: 16384
-          swap-size-mb: 16384
-          remove-dotnet: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-
     - name: Checkout repo
       uses: actions/checkout@v4
       with:
         submodules: recursive
-        fetch-depth: 0
-        lfs: true
 
     - name: Setup CCache
       uses: hendrikmuhs/ccache-action@v1.2
@@ -75,7 +66,7 @@ jobs:
         yes | sdkmanager --licenses
 
     - name: Install packages
-      run: yes | sdkmanager "cmake;3.31.5"
+      run: yes | sdkmanager "cmake;3.31.6"
 
     - name: Download gradlew binaries
       run: ./gradlew
@@ -84,11 +75,11 @@ jobs:
       env: 
         CMAKE_C_COMPILER_LAUNCHER: "ccache"
         CMAKE_CXX_COMPILER_LAUNCHER: "ccache"
-      run: ./gradlew build
+      run: ./gradlew assembleRelease
 
     - name: Build release artifacts
       uses: actions/upload-artifact@v4
-      if: ${{ github.event_name != 'workflow_dispatch' }}
+      if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ inputs.uploadbuild }}
       with:
         name: rpcs3-build
         path: |

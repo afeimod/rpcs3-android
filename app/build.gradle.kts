@@ -43,7 +43,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.31.5"
+            version = "3.31.6"
         }
     }
     buildFeatures {
@@ -52,6 +52,11 @@ android {
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.15"
+    }
+
+    packaging {
+        // This is necessary for libadrenotools custom driver loading
+        jniLibs.useLegacyPackaging = true
     }
 }
 
