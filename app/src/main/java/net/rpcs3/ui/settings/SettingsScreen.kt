@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,12 +40,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.documentfile.provider.DocumentFile
 import net.rpcs3.R
 import net.rpcs3.RPCS3
 import net.rpcs3.dialogs.AlertDialogQueue
 import net.rpcs3.provider.AppDataDocumentProvider
 import net.rpcs3.ui.common.ComposePreview
 import net.rpcs3.ui.settings.components.core.PreferenceIcon
+import net.rpcs3.ui.settings.components.core.PreferenceValue
 import net.rpcs3.ui.settings.components.preference.HomePreference
 import net.rpcs3.ui.settings.components.preference.RegularPreference
 import net.rpcs3.ui.settings.components.preference.SingleSelectionDialog
@@ -99,11 +102,12 @@ fun AdvancedSettingsScreen(
                              null -> {
                                 RegularPreference(
                                     title = key,
-                                    leadingIcon = null
-                                ) {
-                                    Log.e("Main", "Navigate to settings$itemPath, object $itemObject")
-                                    navigateTo("settings$itemPath")
-                                }
+                                    leadingIcon = null,
+                                    onClick = {
+                                        Log.e("Main", "Navigate to settings$itemPath, object $itemObject")
+                                        navigateTo("settings$itemPath")
+                                    }
+                                )  
                             }
 
                             "bool" -> {
@@ -112,15 +116,30 @@ fun AdvancedSettingsScreen(
                                 SwitchPreference (
                                     checked = itemValue,
                                     title = key + if (itemValue == def) "" else " *",
-                                    leadingIcon = null
-                                ) { value ->
-                                    if (!RPCS3.instance.settingsSet(itemPath, if (value) "true" else "false")) {
-                                        AlertDialogQueue.showDialog("Setting error", "Failed to assign $itemPath value $value")
-                                    } else {
-                                        itemObject.put("value", value)
-                                        itemValue = value
+                                    leadingIcon = null,
+                                    onClick = { value ->
+                                        if (!RPCS3.instance.settingsSet(itemPath, if (value) "true" else "false")) {
+                                           AlertDialogQueue.showDialog("Setting error", "Failed to assign $itemPath value $value")
+                                        } else {
+                                            itemObject.put("value", value)
+                                            itemValue = value
+                                        }
+                                   },
+                                   onLongClick = {
+                                        AlertDialogQueue.showDialog(
+                                            title = "Reset Setting",
+                                            message = "Do you want to reset '$key' to its default value?",
+                                            onConfirm = {
+                                                if (RPCS3.instance.settingsSet(itemPath, def.toString())) {
+                                                    itemObject.put("value", def)
+                                                    itemValue = def
+                                                } else {
+                                                    AlertDialogQueue.showDialog("Setting error", "Failed to reset $key")
+                                                }
+                                            }
+                                        )
                                     }
-                                }
+                                )
                             }
 
                             "enum" -> {
@@ -145,7 +164,22 @@ fun AdvancedSettingsScreen(
                                             itemObject.put("value", value)
                                             itemValue = value
                                         }
-                                    })
+                                    },
+                                    onLongClick = {
+                                        AlertDialogQueue.showDialog(
+                                            title = "Reset Setting",
+                                            message = "Do you want to reset '$key' to its default value?",
+                                            onConfirm = {
+                                                if (RPCS3.instance.settingsSet(itemPath, "\"" + def + "\"")) {
+                                                    itemObject.put("value", def)
+                                                    itemValue = def
+                                                } else {
+                                                    AlertDialogQueue.showDialog("Setting error", "Failed to reset $key")
+                                                }
+                                            }
+                                        )
+                                    }
+                                )
                             }
 
                             "uint", "int" -> {
@@ -162,7 +196,7 @@ fun AdvancedSettingsScreen(
                                     e.printStackTrace()
                                 }
                                 var itemValue by remember { mutableLongStateOf(initialItemValue) }
-                                if (min < max && max - min < 1000) {
+                                if (min < max) {
                                     SliderPreference(
                                         value = itemValue.toFloat(),
                                         valueRange = min.toFloat()..max.toFloat(),
@@ -186,7 +220,21 @@ fun AdvancedSettingsScreen(
                                                 itemValue = value.toLong()
                                             }
                                         },
-                                        valueContent = { Text(itemValue.toString()) }
+                                        valueContent = { PreferenceValue(text = itemValue.toString()) },
+                                        onLongClick = {
+                                            AlertDialogQueue.showDialog(
+                                                title = "Reset Setting",
+                                                message = "Do you want to reset '$key' to its default value?",
+                                                onConfirm = {
+                                                    if (RPCS3.instance.settingsSet(itemPath, def.toString())) {
+                                                        itemObject.put("value", def)
+                                                        itemValue = def
+                                                    } else {
+                                                        AlertDialogQueue.showDialog("Setting error", "Failed to reset $key")
+                                                    }
+                                                }
+                                            )
+                                        }
                                     )
                                 }
                             }
@@ -197,7 +245,7 @@ fun AdvancedSettingsScreen(
                                 val min =  if (itemObject.has("min"))  itemObject.getString("min").toDouble() else 0.0
                                 val def =  if (itemObject.has("default"))  itemObject.getString("default").toDouble() else 0.0
 
-                                if (min < max && max - min < 1000) {
+                                if (min < max) {
                                     SliderPreference(
                                         value = itemValue.toFloat(),
                                         valueRange = min.toFloat()..max.toFloat(),
@@ -218,7 +266,21 @@ fun AdvancedSettingsScreen(
                                                 itemValue = value.toDouble()
                                             }
                                         },
-                                        valueContent = { Text(itemValue.toString() ) }
+                                        valueContent = { PreferenceValue(text = itemValue.toString()) },
+                                        onLongClick = {
+                                            AlertDialogQueue.showDialog(
+                                                title = "Reset Setting",
+                                                message = "Do you want to reset '$key' to its default value?",
+                                                onConfirm = {
+                                                    if (RPCS3.instance.settingsSet(itemPath, def.toString())) {
+                                                        itemObject.put("value", def)
+                                                        itemValue = def
+                                                    } else {
+                                                        AlertDialogQueue.showDialog("Setting error", "Failed to reset $key")
+                                                    }
+                                                }
+                                            )
+                                        }
                                     )
                                 }
                             }
@@ -318,6 +380,33 @@ fun SettingsScreen(
                             confirmText = "Close",
                             dismissText = ""
                         )
+                    }
+                }
+            }
+
+            item(key = "share_logs") {
+                HomePreference(
+                    title = "Share Log",
+                    icon = { Icon(imageVector = Icons.Default.Share, contentDescription = null) },
+                    description = "Share RPCS3's log file to debug issues"
+                ) {
+                    val file = DocumentFile.fromSingleUri(
+                        context,
+                        DocumentsContract.buildDocumentUri(
+                            AppDataDocumentProvider.AUTHORITY,
+                            "${AppDataDocumentProvider.ROOT_ID}/cache/RPCS3.log"
+                        )
+                    )
+
+                    if (file != null && file.exists() && file.length() != 0L) {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            setDataAndType(file.uri, "text/plain")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            putExtra(Intent.EXTRA_STREAM, file.uri)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Share Log File"))
+                    } else {
+                        Toast.makeText(context, "Log file not found!", Toast.LENGTH_SHORT).show()
                     }
                 }
             }

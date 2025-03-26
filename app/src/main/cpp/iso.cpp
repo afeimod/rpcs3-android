@@ -2,18 +2,62 @@
 #include "iso.hpp"
 #include "Utilities/File.h"
 #include "util/types.hpp"
+#include <bit>
 #include <cctype>
+#include <codecvt>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <memory>
+#include <span>
+#include <string>
+
+static std::string u16_ne_to_string(const char16_t *bytes, std::size_t count) {
+  std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> convert;
+  return convert.to_bytes(bytes, bytes + count);
+}
+
+static std::string u16_se_to_string(const char16_t *bytes, std::size_t count) {
+  auto seBytes = (se_t<char16_t, true, alignof(char16_t)> *)bytes;
+
+  std::vector<char16_t> neBytes(count);
+  for (std::size_t i = 0; i < count; ++i) {
+    neBytes[i] = seBytes[i];
+  }
+
+  return u16_ne_to_string(neBytes.data(), neBytes.size());
+}
+
+static std::string u16_be_to_string(const char16_t *bytes, std::size_t count) {
+  if constexpr (std::endian::native == std::endian::big) {
+    return u16_ne_to_string(bytes, count);
+  } else {
+    return u16_se_to_string(bytes, count);
+  }
+}
+
+static std::string decodeString(std::string_view data,
+                                iso::StringEncoding encoding) {
+  switch (encoding) {
+  case iso::StringEncoding::ascii:
+    break;
+
+  case iso::StringEncoding::utf16_be:
+    return u16_be_to_string((char16_t *)data.data(), data.size() / 2);
+  }
+
+  return std::string(data);
+}
 
 bool iso_fs::initialize() {
   constexpr std::size_t primaryVolumeDescOffset = 16;
   ensure(m_dev->block_size() >= sizeof(iso::VolumeHeader));
   std::vector<std::byte> block(m_dev->block_size());
+
+  std::optional<iso::PrimaryVolumeDescriptor> primaryVolume;
+  std::optional<iso::PrimaryVolumeDescriptor> supplementaryVolume;
 
   for (std::size_t i = 0; i < 256; ++i) {
     if (m_dev->read(primaryVolumeDescOffset + i, block.data(), 1) != 1) {
@@ -26,17 +70,34 @@ bool iso_fs::initialize() {
       break;
     }
 
-    if (header->type != 1 ||
-        std::memcmp(header->standard_id, "CD001", 5) != 0) {
+    if (std::memcmp(header->standard_id, "CD001", 5) != 0) {
       continue;
     }
 
-    auto pvd = reinterpret_cast<iso::PrimaryVolumeDescriptor *>(block.data());
-    m_root_dir = pvd->root;
-    return true;
+    if (header->type == 1) {
+      primaryVolume =
+          *reinterpret_cast<iso::PrimaryVolumeDescriptor *>(block.data());
+      continue;
+    }
+
+    if (header->type == 2) {
+      std::printf("found supplementary volume\n");
+      supplementaryVolume =
+          *reinterpret_cast<iso::PrimaryVolumeDescriptor *>(block.data());
+      continue;
+    }
   }
 
-  return false;
+  if (!primaryVolume) {
+    return false;
+  }
+
+  auto &pvd = supplementaryVolume ? *supplementaryVolume : *primaryVolume;
+  m_encoding = supplementaryVolume ? iso::StringEncoding::utf16_be
+                                   : iso::StringEncoding::ascii;
+  m_root_dir = pvd.root;
+
+  return true;
 }
 
 fs::file iso_fs::open(const std::filesystem::path &path, fs::open_mode mode) {
@@ -160,18 +221,19 @@ iso_fs::read_dir(const iso::DirEntry &entry) {
   }
 
   auto block_size = m_dev->block_size();
-  auto total_block_count = 1;
+  auto total_block_count = (entry.length.value() + block_size - 1) / block_size;
+  auto total_buffer_block_count = std::min<std::size_t>(total_block_count, 10);
 
-  std::vector<std::byte> buffer(total_block_count * block_size);
+  std::vector<std::byte> buffer(total_buffer_block_count * block_size);
   auto first_block = entry.lba.value();
 
   std::vector<iso::DirEntry> isoEntries;
   std::vector<std::string> names;
 
-  for (std::size_t block = first_block,
-                   end = first_block + entry.length.value() / block_size;
+  for (std::size_t block = first_block, end = first_block + total_block_count;
        block < end;) {
-    auto block_count = m_dev->read(block, buffer.data(), total_block_count);
+    auto block_count =
+        m_dev->read(block, buffer.data(), total_buffer_block_count);
     block += block_count;
 
     std::size_t buffer_offset = 0;
@@ -181,33 +243,60 @@ iso_fs::read_dir(const iso::DirEntry &entry) {
     while (buffer_offset < buffer_size) {
       auto item = reinterpret_cast<const iso::DirEntry *>(buffer.data() +
                                                           buffer_offset);
-
-      buffer_offset += item->entry_length;
-
-      if (item->entry_length < sizeof(iso::DirEntry)) {
+      if (item->entry_length == 0) {
         buffer_offset += block_size;
         buffer_offset &= ~(block_size - 1);
         continue;
       }
+
+      auto filename_end =
+          sizeof(iso::DirEntry) +
+          ((item->filename_length + 1) & ~static_cast<std::size_t>(1));
+
+      if (item->entry_length < filename_end) {
+        buffer_offset += item->entry_length;
+        continue;
+      }
+
+      auto susp_area = std::span(buffer.data() + buffer_offset + filename_end,
+                                 item->entry_length - filename_end);
+      struct [[gnu::packed]] SuspHeader {
+        char signature[2];
+        u8 length;
+        u8 version;
+      };
+
+      if (susp_area.size() > sizeof(SuspHeader)) {
+        auto susp_header = reinterpret_cast<SuspHeader *>(susp_area.data());
+
+        // TODO: extensions support
+      }
+
+      buffer_offset += item->entry_length;
 
       if (item->filename_length == 0 ||
           item->filename_length + sizeof(iso::DirEntry) > item->entry_length) {
         continue;
       }
 
-      auto filename = std::string_view(reinterpret_cast<const char *>(item + 1),
-                                       item->filename_length);
+      auto filename =
+          item->filename_length > 1
+              ? decodeString({reinterpret_cast<const char *>(item + 1),
+                              item->filename_length},
+                             m_encoding)
+              : std::string{};
 
-      if (filename.length() == 1) {
+      if (item->filename_length == 1) {
+        char c = *reinterpret_cast<const char *>(item + 1);
         // can be special name
-        if (filename[0] == 0) {
+        if (c == 0) {
           filename = ".";
-        } else if (filename[0] == 1) {
+        } else if (c == 1) {
           filename = "..";
         }
       }
 
-      filename = filename.substr(0, filename.find_first_of(";\0\n"));
+      filename = filename.substr(0, filename.find(';'));
       if (filename.empty()) {
         continue;
       }

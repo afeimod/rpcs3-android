@@ -6,9 +6,9 @@ import android.app.NotificationManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
-import androidx.core.view.WindowCompat
 import net.rpcs3.ui.navigation.AppNavHost
 import kotlin.concurrent.thread
 
@@ -52,13 +52,19 @@ class MainActivity : ComponentActivity() {
             createNotificationChannel(channel)
         }
 
-        thread {
-            RPCS3.instance.startMainThreadProcessor()
-        }
-
         if (!RPCS3.initialized) {
             RPCS3.instance.initialize(RPCS3.rootDirectory)
+            val nativeLibraryDir = packageManager.getApplicationInfo(packageName, 0).nativeLibraryDir
+            RPCS3.instance.settingsSet("Video@@Vulkan@@Custom Driver@@Hook Directory", "\"" + nativeLibraryDir + "\"")
             RPCS3.initialized = true
+
+            thread {
+                RPCS3.instance.startMainThreadProcessor()
+            }
+
+            thread {
+                RPCS3.instance.processCompilationQueue()
+            }
         }
 
         unregisterUsbEventListener = listenUsbEvents(this)

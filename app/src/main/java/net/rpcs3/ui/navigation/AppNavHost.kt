@@ -1,20 +1,27 @@
 package net.rpcs3.ui.navigation
 
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
@@ -38,11 +45,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -54,13 +64,15 @@ import net.rpcs3.FirmwareRepository
 import net.rpcs3.PrecompilerService
 import net.rpcs3.PrecompilerServiceAction
 import net.rpcs3.ProgressRepository
+import net.rpcs3.R
 import net.rpcs3.RPCS3
 import net.rpcs3.dialogs.AlertDialogQueue
+import net.rpcs3.ui.drivers.GpuDriversScreen
 import net.rpcs3.ui.games.GamesScreen
 import net.rpcs3.ui.settings.AdvancedSettingsScreen
 import net.rpcs3.ui.settings.SettingsScreen
+import net.rpcs3.utils.FileUtil
 import org.json.JSONObject
-import net.rpcs3.ui.drivers.GpuDriversScreen
 
 @Preview
 @Composable
@@ -86,7 +98,6 @@ fun AppNavHost() {
             route = "games"
         ) {
             GamesDestination(
-                drawerState = drawerState,
                 navigateToSettings = { navController.navigate("settings") }
             )
         }
@@ -156,11 +167,12 @@ fun AppNavHost() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamesDestination(
-    drawerState: androidx.compose.material3.DrawerState,
     navigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    // val prefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
 
     val installPkgLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -181,6 +193,18 @@ fun GamesDestination(
                 PrecompilerServiceAction.InstallFirmware,
                 uri
             )
+        }
+    )
+    
+    val gameFolderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                // TODO: FileUtil.saveGameFolderUri(prefs, it)
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(it, takeFlags)
+                FileUtil.installPackages(context, it)
+            }
         }
     )
 
@@ -294,13 +318,57 @@ fun GamesDestination(
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { installPkgLauncher.launch("*/*") },
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Icon(Icons.Filled.Add, "Add game")
-                }
+                DropUpFloatingActionButton(installPkgLauncher, gameFolderPickerLauncher)
             },
         ) { innerPadding -> Column(modifier = Modifier.padding(innerPadding)) { GamesScreen() } }
+    }
+}
+
+@Composable
+fun DropUpFloatingActionButton(
+    installPkgLauncher: ActivityResultLauncher<String>,
+    gameFolderPickerLauncher: ActivityResultLauncher<Uri?>
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier.padding(16.dp),
+        contentAlignment = androidx.compose.ui.Alignment.BottomEnd
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = androidx.compose.ui.Alignment.End
+        ) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = androidx.compose.animation.expandVertically(
+                    animationSpec = tween(300, easing = FastOutSlowInEasing)
+                ),
+                exit = androidx.compose.animation.shrinkVertically(
+                    animationSpec = tween(200, easing = FastOutSlowInEasing)
+                )
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FloatingActionButton(
+                        onClick = { installPkgLauncher.launch("*/*"); expanded = false },
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    ) {
+                        Icon(painter = painterResource(id = R.drawable.ic_description), contentDescription = "Select Game")
+                    }
+                    FloatingActionButton(
+                        onClick = { gameFolderPickerLauncher.launch(null); expanded = false },
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    ) {
+                        Icon(painter = painterResource(id = R.drawable.ic_folder), contentDescription = "Select Folder")
+                    }
+                }
+            }
+
+            FloatingActionButton(
+                onClick = { expanded = !expanded }
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "Add")
+            }
+        }
     }
 }

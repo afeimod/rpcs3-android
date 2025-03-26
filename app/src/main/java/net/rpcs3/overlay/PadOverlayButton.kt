@@ -22,8 +22,8 @@ class PadOverlayButton(resources: Resources, image: Bitmap, private val digital1
                 alpha = 255
                 hit = true
             }
-        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
-            if (event.getPointerId(pointerIndex) == locked) {
+        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
+            if (locked != -1 && (action == MotionEvent.ACTION_CANCEL || event.getPointerId(pointerIndex) == locked)) {
                 pressed = false
                 locked = -1
                 alpha = origAlpha
@@ -32,11 +32,11 @@ class PadOverlayButton(resources: Resources, image: Bitmap, private val digital1
         }
 
         if (pressed) {
-            padState.digital1 = padState.digital1 or digital1
-            padState.digital2 = padState.digital2 or digital2
+            padState.digital[0] = padState.digital[0] or digital1
+            padState.digital[1] = padState.digital[1] or digital2
         } else {
-            padState.digital1 = padState.digital1 and digital1.inv()
-            padState.digital2 = padState.digital2 and digital2.inv()
+            padState.digital[0] = padState.digital[0] and digital1.inv()
+            padState.digital[1] = padState.digital[1] and digital2.inv()
         }
 
         return hit

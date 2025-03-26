@@ -126,11 +126,11 @@ struct PrimaryVolumeDescriptor {
   le_be_pair<u16> volume_set_size;
   le_be_pair<u16> vol_seq_num;
   le_be_pair<u16> block_size;
-  le_be_pair<u32> patch_table_size;
-  le_t<u32> patch_table_block_le;
-  le_t<u32> ext_patch_table_block_le;
-  le_t<u32> patch_table_block_be;
-  le_t<u32> ext_patch_table_block_be;
+  le_be_pair<u32> path_table_size;
+  le_t<u32> path_table_block_le;
+  le_t<u32> ext_path_table_block_le;
+  be_t<u32> path_table_block_be;
+  be_t<u32> ext_path_table_block_be;
   DirEntry root;
   u8 pad3;
   uint8_t volume_set_id[128];
@@ -147,6 +147,26 @@ struct PrimaryVolumeDescriptor {
   uint8_t version;
   uint8_t pad4;
   uint8_t app_used[512];
+
+  u32 path_table_block() const {
+    if constexpr (std::endian::native == std::endian::little) {
+      return path_table_block_le;
+    } else {
+      return path_table_block_be;
+    }
+  }
+};
+
+struct PathTableEntryHeader {
+    u8 name_length;
+    u8 ext_attr_length;
+    le_t<u32> location;
+    le_t<u16> parent_id;
+};
+
+enum class StringEncoding {
+  ascii,
+  utf16_be,
 };
 
 #pragma pack(pop)
@@ -155,6 +175,7 @@ struct PrimaryVolumeDescriptor {
 class iso_fs final : public fs_provider {
   std::unique_ptr<block_dev> m_dev;
   iso::DirEntry m_root_dir;
+  iso::StringEncoding m_encoding = iso::StringEncoding::ascii;
 
 public:
   iso_fs() = default;

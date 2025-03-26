@@ -3,185 +3,197 @@ package net.rpcs3.overlay
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
+import android.graphics.Rect
 import android.view.MotionEvent
-import net.rpcs3.Digital1Flags
+import androidx.core.graphics.drawable.toDrawable
 
-enum class DpadState {
-    Idle,
-    Top,
-    Left,
-    Right,
-    Bottom,
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight,
+private enum class DpadButton(val bit: Int) {
+    Top(1 shl 0), Left(1 shl 1), Right(1 shl 2), Bottom(1 shl 3);
 }
 
-class PadOverlayDpad(resources: Resources, imgIdle: Bitmap, imgTop: Bitmap, imgTopLeft: Bitmap) {
-    private val drawableIdle = BitmapDrawable(resources, imgIdle)
-    private val drawableTop = BitmapDrawable(resources, imgTop)
-    private val drawableTopLeft = BitmapDrawable(resources, imgTopLeft)
-    private var state = DpadState.Idle
-    private var locked = -1
+private class DpadState(var mask: Int = 0) {
+    fun isActive(btn: DpadButton): Boolean {
+        return (mask and btn.bit) == btn.bit
+    }
 
-    fun contains(x: Int, y: Int) = drawableIdle.bounds.contains(x, y)
+    fun setBtn(btn: DpadButton) {
+        mask = mask or btn.bit
+    }
+
+    fun clear() {
+        mask = 0
+    }
+}
+
+class PadOverlayDpad(
+    resources: Resources,
+    buttonWidth: Int,
+    buttonHeight: Int,
+    private val area: Rect,
+    private val digitalIndex: Int,
+    imgTop: Bitmap,
+    private val topBit: Int,
+    imgLeft: Bitmap,
+    private val leftBit: Int,
+    imgRight: Bitmap,
+    private val rightBit: Int,
+    imgBottom: Bitmap,
+    private val bottomBit: Int,
+    private val multitouch: Boolean
+) {
+    private val drawableTop = imgTop.toDrawable(resources)
+    private val drawableLeft = imgLeft.toDrawable(resources)
+    private val drawableRight = imgRight.toDrawable(resources)
+    private val drawableBottom = imgBottom.toDrawable(resources)
+    private val locked = arrayOf(-1, -1)
+    private val btnState = arrayOf(DpadState(), DpadState())
+    private val digitalBits = arrayOf(0, 0)
+    var idleAlpha: Int = 255
+
+    init {
+        drawableTop.setBounds(
+            area.centerX() - buttonWidth / 2,
+            area.top,
+            area.centerX() + buttonWidth / 2,
+            area.top + buttonHeight,
+        )
+
+        drawableBottom.setBounds(
+            area.centerX() - buttonWidth / 2,
+            area.bottom - buttonHeight,
+            area.centerX() + buttonWidth / 2,
+            area.bottom,
+        )
+
+        drawableLeft.setBounds(
+            area.left,
+            area.centerY() - buttonWidth / 2,
+            area.left + buttonHeight,
+            area.centerY() + buttonWidth / 2,
+        )
+
+        drawableRight.setBounds(
+            area.right - buttonHeight,
+            area.centerY() - buttonWidth / 2,
+            area.right,
+            area.centerY() + buttonWidth / 2,
+        )
+    }
+
+    fun contains(x: Int, y: Int) = area.contains(x, y)
 
     fun onTouch(event: MotionEvent, pointerIndex: Int, padState: State): Boolean {
         val action = event.actionMasked
         var hit = false
 
-        var activePointerIndex = pointerIndex
+        for (touchIndex in 0..1) {
+            if (!multitouch && touchIndex > 0) {
+                break
+            }
 
-        if (locked != -1) {
-            activePointerIndex = -1
-            for (i in 0..<event.pointerCount) {
-                if (locked == event.getPointerId(i)) {
-                    activePointerIndex = i
-                    break
+            var activePointerIndex = pointerIndex
+
+            if (locked[touchIndex] != -1 && action == MotionEvent.ACTION_MOVE) {
+                activePointerIndex = -1
+                for (i in 0..<event.pointerCount) {
+                    if (locked[touchIndex] == event.getPointerId(i)) {
+                        activePointerIndex = i
+                        break
+                    }
+                }
+
+                if (activePointerIndex == -1) {
+                    continue
                 }
             }
 
-            if (activePointerIndex == -1) {
-                return false
-            }
-        }
+            if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN || (action == MotionEvent.ACTION_MOVE && locked[touchIndex] != -1)) {
+                if (action != MotionEvent.ACTION_MOVE) {
+                    if (locked[touchIndex] == -1) {
+                        locked[touchIndex] = event.getPointerId(pointerIndex)
+                    } else if (locked[touchIndex] != event.getPointerId(pointerIndex)) {
+                        continue
+                    }
+                }
 
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN || (action == MotionEvent.ACTION_MOVE && locked != -1)) {
-            if (locked == -1) {
-                locked = event.getPointerId(pointerIndex)
-            }
+                val x = event.getX(activePointerIndex)
+                val y = event.getY(activePointerIndex)
 
-            hit = true
+                val leftDistance = x - area.left
+                val topDistance = y - area.top
+                val bottomDistance = area.bottom - y
+                val rightDistance = area.right - x
+                val distanceWidth = area.width() / 3.5
 
-            val x = event.getX(activePointerIndex)
-            val y = event.getY(activePointerIndex)
+                val left = leftDistance < distanceWidth
+                val right = !left && rightDistance < distanceWidth
+                val top = topDistance < distanceWidth
+                val bottom = !top && bottomDistance < distanceWidth
 
-            val leftDistance = x - drawableIdle.bounds.left
-            val topDistance = y - drawableIdle.bounds.top
-            val bottomDistance = drawableIdle.bounds.bottom - y
-            val rightDistance = drawableIdle.bounds.right - x
-            val distanceWidth = drawableIdle.bounds.width() / 2.7
-
-            val left = leftDistance < distanceWidth
-            val right = rightDistance < distanceWidth
-            val top = topDistance < distanceWidth
-            val bottom = bottomDistance < distanceWidth
-
-            padState.digital1 =
-                padState.digital1 and (Digital1Flags.CELL_PAD_CTRL_LEFT.bit or Digital1Flags.CELL_PAD_CTRL_UP.bit or Digital1Flags.CELL_PAD_CTRL_DOWN.bit or Digital1Flags.CELL_PAD_CTRL_RIGHT.bit).inv()
-
-            if (top && left) {
-                state = DpadState.TopLeft
-                padState.digital1 =
-                    padState.digital1 or Digital1Flags.CELL_PAD_CTRL_LEFT.bit or Digital1Flags.CELL_PAD_CTRL_UP.bit
-            } else if (top && right) {
-                state = DpadState.TopRight
-                padState.digital1 =
-                    padState.digital1 or Digital1Flags.CELL_PAD_CTRL_RIGHT.bit or Digital1Flags.CELL_PAD_CTRL_UP.bit
-            } else if (bottom && left) {
-                state = DpadState.BottomLeft
-                padState.digital1 =
-                    padState.digital1 or Digital1Flags.CELL_PAD_CTRL_LEFT.bit or Digital1Flags.CELL_PAD_CTRL_DOWN.bit
-            } else if (bottom && right) {
-                state = DpadState.BottomRight
-                padState.digital1 =
-                    padState.digital1 or Digital1Flags.CELL_PAD_CTRL_RIGHT.bit or Digital1Flags.CELL_PAD_CTRL_DOWN.bit
-            } else if (top) {
-                state = DpadState.Top
-                padState.digital1 = padState.digital1 or Digital1Flags.CELL_PAD_CTRL_UP.bit
-            } else if (left) {
-                state = DpadState.Left
-                padState.digital1 = padState.digital1 or Digital1Flags.CELL_PAD_CTRL_LEFT.bit
-            } else if (right) {
-                state = DpadState.Right
-                padState.digital1 = padState.digital1 or Digital1Flags.CELL_PAD_CTRL_RIGHT.bit
-            } else if (bottom) {
-                state = DpadState.Bottom
-                padState.digital1 = padState.digital1 or Digital1Flags.CELL_PAD_CTRL_DOWN.bit
-            } else {
-                state = DpadState.Idle
-            }
-        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
-            if (event.getPointerId(pointerIndex) == locked) {
                 hit = true
-                padState.digital1 =
-                    padState.digital1 and (Digital1Flags.CELL_PAD_CTRL_LEFT.bit or Digital1Flags.CELL_PAD_CTRL_UP.bit or Digital1Flags.CELL_PAD_CTRL_DOWN.bit or Digital1Flags.CELL_PAD_CTRL_RIGHT.bit).inv()
 
-                state = DpadState.Idle
-                locked = -1
+                digitalBits[touchIndex] = 0
+                btnState[touchIndex].clear()
+
+                if (top) {
+                    btnState[touchIndex].setBtn(DpadButton.Top)
+                    digitalBits[touchIndex] = digitalBits[touchIndex] or topBit
+                }
+
+                if (left) {
+                    btnState[touchIndex].setBtn(DpadButton.Left)
+                    digitalBits[touchIndex] = digitalBits[touchIndex] or leftBit
+                }
+
+                if (right) {
+                    btnState[touchIndex].setBtn(DpadButton.Right)
+                    digitalBits[touchIndex] = digitalBits[touchIndex] or rightBit
+                }
+
+                if (bottom) {
+                    btnState[touchIndex].setBtn(DpadButton.Bottom)
+                    digitalBits[touchIndex] = digitalBits[touchIndex] or bottomBit
+                }
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
+                if (locked[touchIndex] != -1 && (action == MotionEvent.ACTION_CANCEL || event.getPointerId(
+                        pointerIndex
+                    ) == locked[touchIndex])
+                ) {
+                    hit = true
+                    digitalBits[touchIndex] = 0
+                    btnState[touchIndex].clear()
+                    locked[touchIndex] = -1
+                }
+            }
+
+            if (hit) {
+                break
             }
         }
 
-        return hit
+        padState.digital[digitalIndex] =
+            (padState.digital[digitalIndex] and (leftBit or rightBit or topBit or bottomBit).inv()) or digitalBits[0] or digitalBits[1]
+
+        return hit || area.contains(
+            event.getX(pointerIndex).toInt(), event.getY(pointerIndex).toInt()
+        )
     }
-
-    fun setBounds(left: Int, top: Int, right: Int, bottom: Int) {
-        drawableIdle.setBounds(left, top, right, bottom)
-        drawableTop.setBounds(left, top, right, bottom)
-        drawableTopLeft.setBounds(left, top, right, bottom)
-    }
-
-    var alpha: Int
-        get() {
-            return drawableIdle.alpha
-        }
-        set(value) {
-            drawableIdle.alpha = value
-            drawableTop.alpha = value
-            drawableTopLeft.alpha = value
-        }
-
 
     fun draw(canvas: Canvas) {
-        val x = drawableIdle.bounds.centerX()
-        val y = drawableIdle.bounds.centerY()
-        when (state) {
-            DpadState.Idle -> drawableIdle.draw(canvas)
-            DpadState.Top -> drawableTop.draw(canvas)
-            DpadState.Left -> {
-                canvas.save()
-                canvas.rotate(270f, x.toFloat(), y.toFloat())
-                drawableTop.draw(canvas)
-                canvas.restore()
-            }
+        drawableLeft.alpha =
+            if (btnState[0].isActive(DpadButton.Left) || btnState[1].isActive(DpadButton.Left)) 255 else idleAlpha
+        drawableLeft.draw(canvas)
 
-            DpadState.Right -> {
-                canvas.save()
-                canvas.rotate(90f, x.toFloat(), y.toFloat())
-                drawableTop.draw(canvas)
-                canvas.restore()
-            }
+        drawableRight.alpha =
+            if (btnState[0].isActive(DpadButton.Right) || btnState[1].isActive(DpadButton.Right)) 255 else idleAlpha
+        drawableRight.draw(canvas)
 
-            DpadState.Bottom -> {
-                canvas.save()
-                canvas.rotate(180f, x.toFloat(), y.toFloat())
-                drawableTop.draw(canvas)
-                canvas.restore()
-            }
+        drawableBottom.alpha =
+            if (btnState[0].isActive(DpadButton.Bottom) || btnState[1].isActive(DpadButton.Bottom)) 255 else idleAlpha
+        drawableBottom.draw(canvas)
 
-            DpadState.TopLeft -> drawableTopLeft.draw(canvas)
-            DpadState.TopRight -> {
-                canvas.save()
-                canvas.rotate(90f, x.toFloat(), y.toFloat())
-                drawableTopLeft.draw(canvas)
-                canvas.restore()
-            }
-
-            DpadState.BottomLeft -> {
-                canvas.save()
-                canvas.rotate(270f, x.toFloat(), y.toFloat())
-                drawableTopLeft.draw(canvas)
-                canvas.restore()
-            }
-
-            DpadState.BottomRight -> {
-                canvas.save()
-                canvas.rotate(180f, x.toFloat(), y.toFloat())
-                drawableTopLeft.draw(canvas)
-                canvas.restore()
-            }
-        }
+        drawableTop.alpha =
+            if (btnState[0].isActive(DpadButton.Top) || btnState[1].isActive(DpadButton.Top)) 255 else idleAlpha
+        drawableTop.draw(canvas)
     }
 }

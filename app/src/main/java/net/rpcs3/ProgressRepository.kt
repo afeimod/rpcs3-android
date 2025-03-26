@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import androidx.annotation.Keep
 import androidx.compose.runtime.MutableLongState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableLongStateOf
@@ -47,6 +48,7 @@ class ProgressRepository {
         fun getItem(id: Long?) =
             if (id != null) instance.progressHandlers[id]?.progressEntry else null
 
+        @Keep
         @JvmStatic
         fun onProgressEvent(id: Long, value: Long, max: Long, message: String? = null): Boolean {
             val item = instance.progressHandlers[id] ?: return false
@@ -90,7 +92,7 @@ class ProgressRepository {
 
             val builder = NotificationCompat.Builder(context, "rpcs3-progress").apply {
                 setContentTitle(title)
-                setSmallIcon(R.drawable.ic_launcher_foreground)
+                setSmallIcon(R.drawable.ic_rpcs3_monochrome)
                 setCategory(NotificationCompat.CATEGORY_SERVICE)
                 setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 setProgress(0, 0, true)

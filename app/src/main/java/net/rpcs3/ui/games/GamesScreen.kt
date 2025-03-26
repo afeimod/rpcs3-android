@@ -143,7 +143,10 @@ fun GameItem(game: Game) {
                     if (game.hasFlag(GameFlag.Locked)) {
                         AlertDialogQueue.showDialog(
                             title = "Missing key",
-                            message = "This game requires key to play"
+                            message = "This game requires key to play",
+                            onConfirm = { installKeyLauncher.launch("*/*")  },
+                            onDismiss = {},
+                            confirmText = "Install RAP file"
                         )
 
                         return@click

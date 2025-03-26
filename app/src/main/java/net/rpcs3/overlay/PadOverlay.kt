@@ -3,7 +3,9 @@ package net.rpcs3.overlay
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.util.AttributeSet
+import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceView
 import net.rpcs3.Digital1Flags
@@ -15,8 +17,7 @@ import kotlin.math.min
 private const val idleAlpha = (0.3 * 255).toInt()
 
 data class State(
-    var digital1: Int = 0,
-    var digital2: Int = 0,
+    val digital: IntArray = IntArray(2),
     var leftStickX: Int = 127,
     var leftStickY: Int = 127,
     var rightStickX: Int = 127,
@@ -26,17 +27,19 @@ data class State(
 class PadOverlay(context: Context?, attrs: AttributeSet?) : SurfaceView(context, attrs) {
     private val buttons: Array<PadOverlayButton>
     private val dpad: PadOverlayDpad
+    private val triangleSquareCircleCross: PadOverlayDpad
     private val state = State()
     private val leftStick: PadOverlayStick
     private val rightStick: PadOverlayStick
-    private val sticks = arrayOf<PadOverlayStick?>(null, null)
+    private val floatingSticks = arrayOf<PadOverlayStick?>(null, null)
+    private val sticks = mutableListOf<PadOverlayStick>()
 
     init {
         val metrics = context!!.resources.displayMetrics
         val totalWidth = metrics.widthPixels
         val totalHeight = metrics.heightPixels
         val sizeHint = min(totalHeight, totalWidth)
-        val buttonSize = sizeHint / 8
+        val buttonSize = sizeHint / 10
 
         val btnAreaW = buttonSize * 3
         val btnAreaH = buttonSize * 3
@@ -44,18 +47,6 @@ class PadOverlay(context: Context?, attrs: AttributeSet?) : SurfaceView(context,
         val btnAreaX = totalWidth - btnAreaW - buttonSize
         val btnAreaY = totalHeight - btnAreaH - buttonSize / 2
         val btnDistance = buttonSize / 8
-
-        val btnCircleX = btnAreaX + btnAreaW - buttonSize - btnDistance
-        val btnCircleY = btnAreaY + btnAreaH / 2 - buttonSize / 2
-
-        val btnTriangleX = btnAreaX + btnAreaW / 2 - buttonSize / 2
-        val btnTriangleY = btnAreaY + btnDistance
-
-        val btnSquareX = btnAreaX + btnDistance
-        val btnSquareY = btnAreaY + btnAreaH / 2 - buttonSize / 2
-
-        val btnCrossX = btnAreaX + btnAreaW / 2 - buttonSize / 2
-        val btnCrossY = btnAreaY + btnAreaH - buttonSize - btnDistance
 
         val dpadW = buttonSize * 3 - btnDistance / 2
         val dpadH = buttonSize * 3 - btnDistance / 2
@@ -81,7 +72,37 @@ class PadOverlay(context: Context?, attrs: AttributeSet?) : SurfaceView(context,
         val btnR1X = btnR2X
         val btnR1Y = btnR2Y + buttonSize + buttonSize / 2
 
-        dpad = createDpad(dpadAreaX, dpadAreaY, dpadW, dpadH)
+        dpad = createDpad(
+            dpadAreaX, dpadAreaY, dpadW, dpadH,
+            dpadW / 2,
+            dpadH / 2 - dpadH / 20,
+            0,
+            R.drawable.dpad_top,
+            Digital1Flags.CELL_PAD_CTRL_UP.bit,
+            R.drawable.dpad_left,
+            Digital1Flags.CELL_PAD_CTRL_LEFT.bit,
+            R.drawable.dpad_right,
+            Digital1Flags.CELL_PAD_CTRL_RIGHT.bit,
+            R.drawable.dpad_bottom,
+            Digital1Flags.CELL_PAD_CTRL_DOWN.bit,
+            false
+        )
+
+        triangleSquareCircleCross = createDpad(
+            btnAreaX - buttonSize / 2, btnAreaY, buttonSize * 3, buttonSize * 3,
+            buttonSize,
+            buttonSize,
+            1,
+            R.drawable.triangle,
+            Digital2Flags.CELL_PAD_CTRL_TRIANGLE.bit,
+            R.drawable.square,
+            Digital2Flags.CELL_PAD_CTRL_SQUARE.bit,
+            R.drawable.circle,
+            Digital2Flags.CELL_PAD_CTRL_CIRCLE.bit,
+            R.drawable.cross,
+            Digital2Flags.CELL_PAD_CTRL_CROSS.bit,
+            true
+        )
 
         leftStick = PadOverlayStick(
             resources,
@@ -101,43 +122,44 @@ class PadOverlay(context: Context?, attrs: AttributeSet?) : SurfaceView(context,
         rightStick.setBounds(0, 0, buttonSize * 2, buttonSize * 2)
         rightStick.alpha = idleAlpha
 
+
+        val l3r3Size = (buttonSize * 1.5).toInt()
+        val l3 = PadOverlayStick(
+            resources,
+            true,
+            BitmapFactory.decodeResource(resources, R.drawable.left_stick_background),
+            BitmapFactory.decodeResource(resources, R.drawable.l3),
+            pressDigitalIndex = 0,
+            pressBit = Digital1Flags.CELL_PAD_CTRL_L3.bit
+        )
+        l3.alpha = idleAlpha
+        l3.setBounds(
+            totalWidth / 2 - buttonSize * 2 - l3r3Size,
+            (totalHeight - buttonSize * 2.3).toInt(),
+            totalWidth / 2 - buttonSize * 2,
+            totalHeight - (buttonSize * 2.3).toInt() + l3r3Size
+        )
+
+        val r3 = PadOverlayStick(
+            resources,
+            false,
+            BitmapFactory.decodeResource(resources, R.drawable.right_stick_background),
+            BitmapFactory.decodeResource(resources, R.drawable.r3),
+            pressDigitalIndex = 0,
+            pressBit = Digital1Flags.CELL_PAD_CTRL_R3.bit
+        )
+        r3.alpha = idleAlpha
+        r3.setBounds(
+            totalWidth / 2 + buttonSize * 2,
+            totalHeight - (buttonSize * 2.3).toInt(),
+            totalWidth / 2 + buttonSize * 2 + l3r3Size,
+            totalHeight - (buttonSize * 2.3).toInt() + l3r3Size
+        )
+
+        sticks += l3
+        sticks += r3
+
         buttons = arrayOf(
-            createButton(
-                R.drawable.circle,
-                btnCircleX,
-                btnCircleY,
-                buttonSize,
-                buttonSize,
-                Digital1Flags.None,
-                Digital2Flags.CELL_PAD_CTRL_CIRCLE
-            ),
-            createButton(
-                R.drawable.triangle,
-                btnTriangleX,
-                btnTriangleY,
-                buttonSize,
-                buttonSize,
-                Digital1Flags.None,
-                Digital2Flags.CELL_PAD_CTRL_TRIANGLE
-            ),
-            createButton(
-                R.drawable.square,
-                btnSquareX,
-                btnSquareY,
-                buttonSize,
-                buttonSize,
-                Digital1Flags.None,
-                Digital2Flags.CELL_PAD_CTRL_SQUARE
-            ),
-            createButton(
-                R.drawable.cross,
-                btnCrossX,
-                btnCrossY,
-                buttonSize,
-                buttonSize,
-                Digital1Flags.None,
-                Digital2Flags.CELL_PAD_CTRL_CROSS
-            ),
             createButton(
                 R.drawable.start,
                 btnStartX,
@@ -206,13 +228,16 @@ class PadOverlay(context: Context?, attrs: AttributeSet?) : SurfaceView(context,
                 if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP) motionEvent.actionIndex else 0
             val x = motionEvent.getX(pointerIndex).toInt()
             val y = motionEvent.getY(pointerIndex).toInt()
-            val force = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP
-            if (force || (motionEvent.action == MotionEvent.ACTION_MOVE || dpad.contains(
-                    x,
-                    y
-                ))
-            ) {
+            val force =
+                action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_MOVE
+
+            if (force || dpad.contains(x, y)) {
                 hit = dpad.onTouch(motionEvent, pointerIndex, state)
+            }
+
+            if (force || (!hit && triangleSquareCircleCross.contains(x, y))
+            ) {
+                hit = triangleSquareCircleCross.onTouch(motionEvent, pointerIndex, state)
             }
 
             buttons.forEach { button ->
@@ -221,34 +246,66 @@ class PadOverlay(context: Context?, attrs: AttributeSet?) : SurfaceView(context,
                 }
             }
 
-            for (i in sticks.indices) {
-                val stick = sticks[i] ?: continue
-                val touchResult = stick.onTouch(motionEvent, pointerIndex, state)
-                if (touchResult < 0) {
-                    sticks[i] = null
-                    hit = true
-                } else {
-                    hit = touchResult == 1
+            if (force || !hit) {
+                for (i in sticks.indices) {
+                    if (!force && (!sticks[i].contains(x, y) || floatingSticks[i] != null)) {
+                        continue
+                    }
+
+                    val touchResult = sticks[i].onTouch(motionEvent, pointerIndex, state)
+                    hit = if (touchResult < 0) {
+                        true
+                    } else {
+                        touchResult == 1
+                    }
+                }
+            }
+
+            if (force || !hit) {
+                for (i in floatingSticks.indices) {
+                    val stick = floatingSticks[i] ?: continue
+                    val touchResult = stick.onTouch(motionEvent, pointerIndex, state)
+                    if (touchResult < 0) {
+                        floatingSticks[i] = null
+                        hit = true
+                    } else {
+                        hit = touchResult == 1
+                    }
                 }
             }
 
             RPCS3.instance.overlayPadData(
-                state.digital1,
-                state.digital2,
+                state.digital[0],
+                state.digital[1],
                 state.leftStickX,
                 state.leftStickY,
                 state.rightStickX,
                 state.rightStickY
             )
 
-            if (!hit && (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) && (y > buttonSize && x > buttonSize * 3)) {
-                val stickIndex = if (x <= totalWidth / 2) 0 else 1
-                val stick = if (stickIndex == 0) leftStick else rightStick
+            if (!hit && (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN)) {
+                val xInFloatingArea = x > buttonSize * 2 && x < totalWidth - buttonSize * 2
+                val yInFloatingArea = y > buttonSize && y < totalHeight - buttonSize
+                var inFloatingArea = xInFloatingArea && yInFloatingArea
+                if (!inFloatingArea && yInFloatingArea) {
+                    if (x > buttonSize && x <= buttonSize * 2) {
+                        inFloatingArea = true
+                    }
 
-                if (sticks[stickIndex] == null) {
-                    sticks[stickIndex] = stick
-                    stick.onAdd(motionEvent, pointerIndex, state)
-                    hit = true
+                    if (x <= totalWidth - buttonSize && x >= totalWidth - buttonSize * 2) {
+                        inFloatingArea = true
+                    }
+                }
+
+                if (inFloatingArea) {
+                    val stickIndex = if (x <= totalWidth / 2) 0 else 1
+                    val stick = if (stickIndex == 0) leftStick else rightStick
+
+                    if (floatingSticks[stickIndex] == null && !sticks[stickIndex].isActive()) {
+                        floatingSticks[stickIndex] = stick
+                        stick.onAdd(motionEvent, pointerIndex)
+                        hit = true
+                    }
                 }
             }
 
@@ -264,7 +321,9 @@ class PadOverlay(context: Context?, attrs: AttributeSet?) : SurfaceView(context,
         super.draw(canvas)
         buttons.forEach { button -> button.draw(canvas) }
         dpad.draw(canvas)
-        sticks.forEach { it?.draw(canvas) }
+        triangleSquareCircleCross.draw(canvas)
+        sticks.forEach { it.draw(canvas) }
+        floatingSticks.forEach { it?.draw(canvas) }
     }
 
     private fun createButton(
@@ -284,15 +343,36 @@ class PadOverlay(context: Context?, attrs: AttributeSet?) : SurfaceView(context,
         return result
     }
 
-    private fun createDpad(x: Int, y: Int, width: Int, height: Int): PadOverlayDpad {
+    private fun createDpad(
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        buttonWidth: Int,
+        buttonHeight: Int,
+        digital: Int,
+        upResource: Int, upBit: Int,
+        leftResource: Int, leftBit: Int,
+        rightResource: Int, rightBit: Int,
+        downResource: Int, downBit: Int,
+        multitouch: Boolean
+    ): PadOverlayDpad {
         val resources = context!!.resources
-        val idleBitmap = BitmapFactory.decodeResource(resources, R.drawable.dpad_idle)
-        val topBitmap = BitmapFactory.decodeResource(resources, R.drawable.dpad)
-        val topLeftBitmap = BitmapFactory.decodeResource(resources, R.drawable.dpad_top_left)
+        val upBitmap = BitmapFactory.decodeResource(resources, upResource)
+        val leftBitmap = BitmapFactory.decodeResource(resources, leftResource)
+        val rightBitmap = BitmapFactory.decodeResource(resources, rightResource)
+        val downBitmap = BitmapFactory.decodeResource(resources, downResource)
 
-        val result = PadOverlayDpad(resources, idleBitmap, topBitmap, topLeftBitmap)
-        result.setBounds(x, y, x + width, y + height)
-        result.alpha = idleAlpha
+        val result = PadOverlayDpad(
+            resources, buttonWidth, buttonHeight, Rect(x, y, x + width, y + height), digital,
+            upBitmap, upBit,
+            leftBitmap, leftBit,
+            rightBitmap, rightBit,
+            downBitmap, downBit,
+            multitouch
+        )
+
+        result.idleAlpha = idleAlpha
         return result
     }
 }

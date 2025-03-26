@@ -1,6 +1,7 @@
 package net.rpcs3
 
 import android.content.res.Resources.NotFoundException
+import androidx.annotation.Keep
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
@@ -20,7 +21,7 @@ enum class GameFlag {
 }
 
 @Serializable
-data class GameInfo(
+data class GameInfo @Keep constructor(
     val path: String,
     var name: String? = null,
     var iconPath: String? = null,
@@ -108,7 +109,8 @@ class GameRepository {
                 }
             }
         }
-
+        
+        @Keep
         @JvmStatic
         fun add(gameInfos: Array<GameInfo>, progressId: Long) {
             synchronized(instance) {
