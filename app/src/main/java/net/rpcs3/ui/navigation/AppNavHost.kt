@@ -51,8 +51,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -60,6 +62,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
+import net.rpcs3.EmulatorState
 import net.rpcs3.FirmwareRepository
 import net.rpcs3.PrecompilerService
 import net.rpcs3.PrecompilerServiceAction
@@ -108,7 +111,7 @@ fun AppNavHost() {
                 val elemPath = "$path@@$key"
                 val elemObject = item as? JSONObject
                 if (elemObject == null) {
-                    Log.e( "Main", "element is not object: settings$elemPath, $item")
+                    Log.e("Main", "element is not object: settings$elemPath, $item")
                     return@self
                 }
 
@@ -116,7 +119,7 @@ fun AppNavHost() {
                     return@self
                 }
 
-                Log.e( "Main", "registration settings$elemPath")
+                Log.e("Main", "registration settings$elemPath")
 
                 composable(
                     route = "settings$elemPath"
@@ -151,7 +154,7 @@ fun AppNavHost() {
                 navigateTo = { navController.navigate(it) },
             )
         }
-        
+
         composable(
             route = "drivers"
         ) {
@@ -159,7 +162,7 @@ fun AppNavHost() {
                 navigateBack = navController::navigateUp
             )
         }
-        
+
         unwrapSetting(settings.value)
     }
 }
@@ -173,6 +176,8 @@ fun GamesDestination(
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     // val prefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+    var emulatorState by remember { RPCS3.state }
+    val emulatorActiveGame by remember { RPCS3.activeGame }
 
     val installPkgLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -195,7 +200,7 @@ fun GamesDestination(
             )
         }
     )
-    
+
     val gameFolderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri: Uri? ->
@@ -315,6 +320,19 @@ fun GamesDestination(
                             )
                         }
                     },
+                    actions = {
+                        if (emulatorActiveGame != null && emulatorState != EmulatorState.Stopped && emulatorState != EmulatorState.Stopping) {
+                            IconButton(onClick = {
+                                emulatorState = EmulatorState.Stopped
+                                RPCS3.instance.kill()
+                            }) {
+                                Icon(
+                                    imageVector = ImageVector.vectorResource(R.drawable.ic_stop),
+                                    contentDescription = null
+                                )
+                            }
+                        }
+                    }
                 )
             },
             floatingActionButton = {
@@ -353,13 +371,19 @@ fun DropUpFloatingActionButton(
                         onClick = { installPkgLauncher.launch("*/*"); expanded = false },
                         containerColor = MaterialTheme.colorScheme.secondary
                     ) {
-                        Icon(painter = painterResource(id = R.drawable.ic_description), contentDescription = "Select Game")
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_description),
+                            contentDescription = "Select Game"
+                        )
                     }
                     FloatingActionButton(
                         onClick = { gameFolderPickerLauncher.launch(null); expanded = false },
                         containerColor = MaterialTheme.colorScheme.secondary
                     ) {
-                        Icon(painter = painterResource(id = R.drawable.ic_folder), contentDescription = "Select Folder")
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_folder),
+                            contentDescription = "Select Folder"
+                        )
                     }
                 }
             }

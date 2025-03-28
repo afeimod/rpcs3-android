@@ -1800,6 +1800,11 @@ extern "C" JNIEXPORT void JNICALL Java_net_rpcs3_RPCS3_kill(JNIEnv *env,
   Emu.Kill();
 }
 
+extern "C" JNIEXPORT void JNICALL Java_net_rpcs3_RPCS3_resume(JNIEnv *env,
+                                                              jobject) {
+    Emu.Resume();
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_net_rpcs3_RPCS3_getTitleId(JNIEnv *env, jobject) {
   return wrap(env, Emu.GetTitleID());
