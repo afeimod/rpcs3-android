@@ -87,6 +87,7 @@ class RPCS3 {
     external fun getState() : Int
     external fun kill()
     external fun resume()
+    external fun openHomeMenu()
     external fun getTitleId(): String
     external fun supportsCustomDriverLoading() : Boolean
     external fun isInstallableFile(fd: Int) : Boolean
