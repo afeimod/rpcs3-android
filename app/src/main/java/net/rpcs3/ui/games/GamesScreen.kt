@@ -63,9 +63,11 @@ import net.rpcs3.ProgressRepository
 import net.rpcs3.R
 import net.rpcs3.RPCS3
 import net.rpcs3.RPCS3Activity
+import net.rpcs3.utils.FileUtil
 import net.rpcs3.dialogs.AlertDialogQueue
 import java.io.File
 import kotlin.concurrent.thread
+import kotlin.text.substringAfterLast
 
 private fun withAlpha(color: Color, alpha: Float): Color {
     return Color(
@@ -127,14 +129,27 @@ fun GameItem(game: Game) {
                     leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
                     onClick = {
                         menuExpanded.value = false
+                        val deleteProgress = ProgressRepository.create(context, "Deleting Game")
+                        game.addProgress(GameProgress(deleteProgress, GameProgressType.Compile))
+                        ProgressRepository.onProgressEvent(deleteProgress, -1, 0L)
                         val path = File(game.info.path)
                         if (path.exists()) {
-                            GameRepository.remove(game)
                             path.deleteRecursively()
+                            FileUtil.deleteCache(context, game.info.path.substringAfterLast("/")) { success -> 
+                                if (!success) {
+                                    AlertDialogQueue.showDialog(
+                                        title = "Unexpected Error",
+                                        message = "Failed to delete game cache",
+                                        confirmText = "Close",
+                                        dismissText = ""
+                                    ) 
+                                }
+                                ProgressRepository.onProgressEvent(deleteProgress, 100, 100)
+                                GameRepository.remove(game)
+                            }
                         }
-
-                        // FIXME: delete cache
-                    })
+                    }
+                )
             }
         }
 

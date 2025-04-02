@@ -21,6 +21,10 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import kotlin.concurrent.thread
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class InstallableFolder(
     val uri: Uri, val targetPath: String
@@ -213,6 +217,15 @@ object FileUtil {
     fun isRootTreeUri(uri: Uri): Boolean {
         val paths = uri.pathSegments
         return paths.size == 2 && "tree" == paths[0]
+    }
+
+    fun deleteCache(ctx: Context, gameId: String, onComplete: (Boolean) -> Unit) {
+         CoroutineScope(Dispatchers.IO).launch {
+            val result = File(ctx.getExternalFilesDir(null)!!, "cache/cache/$gameId").deleteRecursively()
+            withContext(Dispatchers.Main) {
+                onComplete(result)
+            }
+         }
     }
 }
 
